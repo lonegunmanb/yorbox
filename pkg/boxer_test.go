@@ -1,7 +1,6 @@
 package pkg
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/ahmetb/go-linq/v3"
@@ -124,7 +123,7 @@ func TestBoxFile(t *testing.T) {
 		t.Run(input.name, func(t *testing.T) {
 			file, diag := hclwrite.ParseConfig([]byte(input.input), "test.tf", hcl.InitialPos)
 			require.False(t, diag.HasErrors())
-			BoxFile(file, "yor_toggle")
+			BoxFile(file, NewOptions("", "yor_toggle", "", ""))
 			actual := string(file.Bytes())
 			assertHclCodeEqual(t, input.expected, actual)
 			file, diag = hclwrite.ParseConfig([]byte(actual), "test.tf", hcl.InitialPos)
@@ -249,7 +248,7 @@ func TestScanYorTagsRanges_ValidResourceBlock(t *testing.T) {
 			require.NotNil(t, tagsToken)
 
 			// Call the scanYorTagsRanges function with the resource tokens
-			yorTagsRanges := scanYorTagsRanges(tagsToken)
+			yorTagsRanges := scanYorTagsRanges(tagsToken, NewOptions("", "", "", ""))
 
 			assert.Equal(t, input.want, yorTagsRanges)
 		})
@@ -330,116 +329,141 @@ func TestScanForYorToggleRanges(t *testing.T) {
 
 func TestBoxYorTags(t *testing.T) {
 	inputs := []struct {
-		name string
-		code string
-		want string
+		name        string
+		code        string
+		want        string
+		boxTemplate string
+		toggleName  string
+		tagsPrefix  string
 	}{
 		{
 			name: "no_yor_toggle",
-			code: `  
-		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = {  
-			  env           = "app"  
+			code: `
+			resource "azurerm_kubernetes_cluster" "main" {
+				tags = {
+				  env           = "app"
+				}
+				workload_identity_enabled = var.workload_identity_enabled
 			}
-			workload_identity_enabled = var.workload_identity_enabled  
-		}  
-	`,
-			want: `  
-		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = {  
-			  env           = "app"  
+		`,
+			want: `
+			resource "azurerm_kubernetes_cluster" "main" {
+				tags = {
+				  env           = "app"
+				}
+				workload_identity_enabled = var.workload_identity_enabled
 			}
-			workload_identity_enabled = var.workload_identity_enabled  
-		}  
-	`,
+		`,
 		},
 		{
 			name: "single_yor_toggle",
-			code: `  
-		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = {  
-			  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
+			code: `
+			resource "azurerm_kubernetes_cluster" "main" {
+				tags = {
+				  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+				}
+				workload_identity_enabled = var.workload_identity_enabled
 			}
-			workload_identity_enabled = var.workload_identity_enabled  
-		}  
-	`,
-			want: `  
-		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = (var.yor_toggle ? {  
-			  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
-			} : {})
-			workload_identity_enabled = var.workload_identity_enabled  
-		}  
-	`,
+		`,
+			want: `
+			resource "azurerm_kubernetes_cluster" "main" {
+				tags = (var.yor_toggle ? {
+				  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+				} : {})
+				workload_identity_enabled = var.workload_identity_enabled
+			}
+		`,
 		},
 		{
 			name: "single_yor_toggle_with_merge",
-			code: `  
-		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = merge({
-              env = "app"
-			},{  
-			  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
-			})
-			workload_identity_enabled = var.workload_identity_enabled  
-		}  
-	`,
-			want: `  
-		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = merge({
-              env = "app"
-			}, (var.yor_toggle ? {  
-			  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
-			} : {}))
-			workload_identity_enabled = var.workload_identity_enabled  
-		}  
-	`,
+			code: `
+			resource "azurerm_kubernetes_cluster" "main" {
+				tags = merge({
+		         env = "app"
+				},{
+				  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+				})
+				workload_identity_enabled = var.workload_identity_enabled
+			}
+		`,
+			want: `
+			resource "azurerm_kubernetes_cluster" "main" {
+				tags = merge({
+		         env = "app"
+				}, (var.yor_toggle ? {
+				  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+				} : {}))
+				workload_identity_enabled = var.workload_identity_enabled
+			}
+		`,
 		},
 		{
 			name: "single_yor_toggle_json_style",
+			code: `
+			resource "azurerm_kubernetes_cluster" "main" {
+				tags = {
+				  git_commit: "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+				}
+				workload_identity_enabled = var.workload_identity_enabled
+			}
+		`,
+			want: `
+			resource "azurerm_kubernetes_cluster" "main" {
+				tags = (var.yor_toggle ? {
+				  git_commit: "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+				} : {})
+				workload_identity_enabled = var.workload_identity_enabled
+			}
+		`,
+		},
+		{
+			name: "multiple_yor_toggle",
+			code: `
+			resource "azurerm_kubernetes_cluster" "main" {
+				tags = merge({
+				  git_commit= "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+				}, {
+				  env = "app"
+				}, {
+		         yor_trace = "12345"
+				})
+				workload_identity_enabled = var.workload_identity_enabled
+			}
+		`,
+			want: `
+			resource "azurerm_kubernetes_cluster" "main" {
+				tags = merge((var.yor_toggle ? {
+				  git_commit= "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+				} : {}), {
+				  env = "app"
+				}, (var.yor_toggle ? {
+		         yor_trace = "12345"
+				} : {}))
+				workload_identity_enabled = var.workload_identity_enabled
+			}
+		`,
+		},
+		{
+			name: "yor_toggle_with_customized_box_template",
 			code: `  
 		resource "azurerm_kubernetes_cluster" "main" {  
 			tags = {  
-			  git_commit: "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
+			  my_tags_git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
 			}
 			workload_identity_enabled = var.workload_identity_enabled  
 		}  
 	`,
 			want: `  
 		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = (var.yor_toggle ? {  
-			  git_commit: "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
-			} : {})
+			tags = (var.my_toggle ? { for k, v in {  
+			  my_tags_git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
+			} : replace(k, "my_tags_", var.yor_toggle_prefix) => v } : {})
 			workload_identity_enabled = var.workload_identity_enabled  
 		}  
 	`,
-		},
-		{
-			name: "multiple_yor_toggle",
-			code: `  
-		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = merge({  
-			  git_commit= "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
-			}, {
-			  env = "app"
-			}, {
-              yor_trace = "12345"
-			})
-			workload_identity_enabled = var.workload_identity_enabled  
-		}  
-	`,
-			want: `  
-		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = merge((var.yor_toggle ? {  
-			  git_commit= "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
-			} : {}), {
-			  env = "app"
-			}, (var.yor_toggle ? {
-              yor_trace = "12345"
-			} : {}))
-			workload_identity_enabled = var.workload_identity_enabled
-		}	
-	`,
+			boxTemplate: `(var.{{ .toggleName }} ? { for k, v in /*<box>*/ { yor_trace = 123 } /*</box>*/ : replace(k, "{{ .tagsPrefix }}", var.yor_toggle_prefix) => v } : {})`,
+			toggleName:  "my_toggle",
+			tagsPrefix:  "my_tags_",
 		},
 	}
 
@@ -450,16 +474,29 @@ func TestBoxYorTags(t *testing.T) {
 			file, diags := hclwrite.ParseConfig([]byte(input.code), "", hcl.InitialPos)
 			require.False(t, diags.HasErrors())
 
-			boxTagsTokensForBlock(file.Body().Blocks()[0], "yor_toggle")
+			toggleName := "yor_toggle"
+			if input.toggleName != "" {
+				toggleName = input.toggleName
+			}
+			options := NewOptions("", toggleName, input.boxTemplate, input.tagsPrefix)
+			boxTagsTokensForBlock(file.Body().Blocks()[0], options)
 			boxedCode := string(file.Bytes())
 			assertHclCodeEqual(t, input.want, boxedCode)
 			boxedFile, diags := hclwrite.ParseConfig([]byte(boxedCode), "", hcl.InitialPos)
 			require.False(t, diags.HasErrors())
-			boxTagsTokensForBlock(boxedFile.Body().Blocks()[0], "yor_toggle")
+			boxTagsTokensForBlock(boxedFile.Body().Blocks()[0], options)
 			boxedCode = string(file.Bytes())
 			assertHclCodeEqual(t, input.want, boxedCode)
 		})
 	}
+}
+
+func TestRenderBoxTemplateWithToggleName(t *testing.T) {
+	template := `(var.{{ .toggleName }} ? /*<box>*/ { yor_trace = 123 } /*</box>*/ : {})`
+	opt := NewOptions("", "my_toggle", template, "")
+	tplt, err := opt.RenderBoxTemplate()
+	require.NoError(t, err)
+	assert.Equal(t, `(var.my_toggle ? /*<box>*/ { yor_trace = 123 } /*</box>*/ : {})`, tplt)
 }
 
 func assertHclCodeEqual(t *testing.T, code1, code2 string) {
@@ -485,13 +522,6 @@ func assertHclCodeEqual(t *testing.T, code1, code2 string) {
 		return t
 	}).ToSlice(&tokens2)
 	assert.Equal(t, tokens1, tokens2)
-}
-
-func trimCode(code string) string {
-	code = strings.TrimSpace(code)
-	code = strings.Trim(code, "\n")
-	code = strings.Trim(code, "\t")
-	return code
 }
 
 func getTagsTokens(block *hclwrite.Block) hclwrite.Tokens {

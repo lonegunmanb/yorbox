@@ -1,9 +1,13 @@
 package pkg
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"text/template"
 
+	"github.com/Masterminds/sprig/v3"
 	"github.com/ahmetb/go-linq/v3"
 	al "github.com/emirpasic/gods/lists/arraylist"
 	"github.com/emirpasic/gods/sets/hashset"
@@ -19,8 +23,42 @@ type tokensRange struct {
 }
 
 type Options struct {
-	Path       string
-	ToggleName string
+	Path        string
+	ToggleName  string
+	BoxTemplate string
+	TagsPrefix  string
+}
+
+func NewOptions(path string, toggleName string, boxTemplate string, tagsPrefix string) Options {
+	if toggleName == "" {
+		toggleName = "yor_toggle"
+	}
+	if boxTemplate == "" {
+		boxTemplate = `(var.{{ .toggleName }} ? /*<box>*/ { yor_trace = 123 } /*</box>*/ : {})`
+	}
+	return Options{
+		Path:        path,
+		ToggleName:  toggleName,
+		BoxTemplate: boxTemplate,
+		TagsPrefix:  tagsPrefix,
+	}
+}
+
+func (o Options) RenderBoxTemplate() (string, error) {
+	tpl := o.BoxTemplate
+	t := template.Must(template.New("box").Funcs(sprig.TxtFuncMap()).Parse(tpl))
+	vars := map[string]any{
+		"dirPath":    o.Path,
+		"toggleName": o.ToggleName,
+		"tagsPrefix": o.TagsPrefix,
+	}
+
+	buff := &bytes.Buffer{}
+	err := t.Execute(buff, vars)
+	if err != nil {
+		return "", err
+	}
+	return buff.String(), nil
 }
 
 func ProcessDirectory(options Options) error {
@@ -50,7 +88,7 @@ func ProcessDirectory(options Options) error {
 		}
 
 		// Invoke BoxFile function
-		BoxFile(f, options.ToggleName)
+		BoxFile(f, options)
 
 		// Write the updated file contents back to the file
 		err = os.WriteFile(filePath, f.Bytes(), os.ModePerm)
@@ -61,74 +99,39 @@ func ProcessDirectory(options Options) error {
 	return nil
 }
 
-func BoxFile(file *hclwrite.File, toggleName string) {
+func BoxFile(file *hclwrite.File, option Options) {
 	for _, block := range file.Body().Blocks() {
 		if block.Type() != "resource" && block.Type() != "module" {
 			continue
 		}
-		boxTagsTokensForBlock(block, toggleName)
+		boxTagsTokensForBlock(block, option)
 	}
 }
 
-func boxTagsTokensForBlock(block *hclwrite.Block, toggleName string) {
-	// (var.yor_toggle ?
-	var togglePrefixTokens = []any{
-		&hclwrite.Token{
-			Type:  hclsyntax.TokenOParen,
-			Bytes: []byte("("),
-		},
-		&hclwrite.Token{
-			Type:  hclsyntax.TokenIdent,
-			Bytes: []byte("var"),
-		},
-		&hclwrite.Token{
-			Type:  hclsyntax.TokenDot,
-			Bytes: []byte("."),
-		},
-		&hclwrite.Token{
-			Type:  hclsyntax.TokenIdent,
-			Bytes: []byte(toggleName),
-		},
-		&hclwrite.Token{
-			Type:  hclsyntax.TokenQuestion,
-			Bytes: []byte("?"),
-		},
+func boxTagsTokensForBlock(block *hclwrite.Block, option Options) error {
+	tplt, err := option.RenderBoxTemplate()
+	if err != nil {
+		return err
 	}
-
-	// ": {})"
-	var toggleSuffixTokens = []any{
-		&hclwrite.Token{
-			Type:  hclsyntax.TokenColon,
-			Bytes: []byte(":"),
-		},
-		&hclwrite.Token{
-			Type:  hclsyntax.TokenOBrace,
-			Bytes: []byte("{"),
-		},
-		&hclwrite.Token{
-			Type:  hclsyntax.TokenCBrace,
-			Bytes: []byte("}"),
-		},
-		&hclwrite.Token{
-			Type:  hclsyntax.TokenCParen,
-			Bytes: []byte(")"),
-		},
+	boxTemplate, diag := buildBoxFromTemplate(tplt)
+	if diag.HasErrors() {
+		return diag
 	}
 	tags := block.Body().GetAttribute("tags")
 	if tags == nil {
-		return
+		return nil
 	}
 	tokens := tags.Expr().BuildTokens(hclwrite.Tokens{})
 	output := al.New()
 	for _, token := range tokens {
 		output.Add(token)
 	}
-	toggleRanges := scanYorToggleRanges(tokens, toggleName)
+	toggleRanges := scanYorToggleRanges(tokens, option.ToggleName)
 	toggleTails := hashset.New()
 	for _, r := range toggleRanges {
 		toggleTails.Add(r.End + 1)
 	}
-	yorTagsRanges := scanYorTagsRanges(tokens)
+	yorTagsRanges := scanYorTagsRanges(tokens, option)
 	linq.From(yorTagsRanges).OrderByDescending(func(i interface{}) interface{} {
 		return i.(tokensRange).End
 	}).ToSlice(&yorTagsRanges)
@@ -136,8 +139,8 @@ func boxTagsTokensForBlock(block *hclwrite.Block, toggleName string) {
 		if toggleTails.Contains(r.Start) {
 			continue
 		}
-		output.Insert(r.End+1, toggleSuffixTokens...)
-		output.Insert(r.Start, togglePrefixTokens...)
+		output.Insert(r.End+1, interfaces(boxTemplate.Right)...)
+		output.Insert(r.Start, interfaces(boxTemplate.Left)...)
 	}
 	tokens = hclwrite.Tokens{}
 	it := output.Iterator()
@@ -145,9 +148,10 @@ func boxTagsTokensForBlock(block *hclwrite.Block, toggleName string) {
 		tokens = append(tokens, it.Value().(*hclwrite.Token))
 	}
 	block.Body().SetAttributeRaw("tags", tokens)
+	return nil
 }
 
-func scanYorTagsRanges(tokens hclwrite.Tokens) []tokensRange {
+func scanYorTagsRanges(tokens hclwrite.Tokens, option Options) []tokensRange {
 	ranges := make([]tokensRange, 0)
 	latestOBrace := lls.New()
 	var previousYorTraceKey bool
@@ -160,7 +164,7 @@ func scanYorTagsRanges(tokens hclwrite.Tokens) []tokensRange {
 			fallthrough
 		case hclsyntax.TokenIdent:
 			name := string(token.Bytes)
-			previousYorTraceKey = name == "yor_trace" || name == "git_commit"
+			previousYorTraceKey = name == fmt.Sprintf("%syor_trace", option.TagsPrefix) || name == fmt.Sprintf("%sgit_commit", option.TagsPrefix)
 		case hclsyntax.TokenEqual:
 			fallthrough
 		case hclsyntax.TokenColon:
