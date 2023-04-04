@@ -263,33 +263,33 @@ func TestScanForYorToggleRanges(t *testing.T) {
 	}{
 		{
 			name: "single_yor_toggle",
-			code: `  
-		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = merge(var.tags, var.yor_toggle ? {  
-			  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
-			} : {})  
-			workload_identity_enabled = var.workload_identity_enabled  
-		}  
-	`,
+			code: `
+			resource "azurerm_kubernetes_cluster" "main" {
+				tags = merge(var.tags, (var.yor_toggle ? {
+				  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+				} : {}))
+				workload_identity_enabled = var.workload_identity_enabled
+			}
+		`,
 			want: []tokensRange{
-				{Start: 8, End: 11},
+				{Start: 8, End: 12},
 			},
 		},
 		{
 			name: "multiple_yor_toggle",
 			code: `  
 		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = merge(var.tags, var.yor_toggle ? {  
+			tags = merge(var.tags, (var.yor_toggle ? {  
 			  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
-			} : {}, var.yor_toggle ? {
+			} : {}), (var.yor_toggle ? {
 			  yor_trace			   = "12345"
-			} : {} )  
+			} : {}))  
 			workload_identity_enabled = var.workload_identity_enabled  
 		}  
 	`,
 			want: []tokensRange{
-				{Start: 8, End: 11},
-				{Start: 25, End: 28},
+				{Start: 8, End: 12},
+				{Start: 27, End: 31},
 			},
 		},
 		{
@@ -320,7 +320,11 @@ func TestScanForYorToggleRanges(t *testing.T) {
 			require.NotNil(t, tokens)
 
 			// Call the scanYorTagsRanges function with the resource tokens
-			toggleRanges := scanYorToggleRanges(tokens, "yor_toggle")
+			options := NewOptions("", "yor_toggle", "", "")
+			tplt, err := options.RenderBoxTemplate()
+			require.NoError(t, err)
+			options.BoxTemplate = tplt
+			toggleRanges := scanYorToggleRanges(tokens, options.BoxTemplate)
 
 			assert.Equal(t, input.want, toggleRanges)
 		})
@@ -339,131 +343,188 @@ func TestBoxYorTags(t *testing.T) {
 		{
 			name: "no_yor_toggle",
 			code: `
-			resource "azurerm_kubernetes_cluster" "main" {
-				tags = {
-				  env           = "app"
+				resource "azurerm_kubernetes_cluster" "main" {
+					tags = {
+					  env           = "app"
+					}
+					workload_identity_enabled = var.workload_identity_enabled
 				}
-				workload_identity_enabled = var.workload_identity_enabled
-			}
-		`,
+			`,
 			want: `
-			resource "azurerm_kubernetes_cluster" "main" {
-				tags = {
-				  env           = "app"
+				resource "azurerm_kubernetes_cluster" "main" {
+					tags = {
+					  env           = "app"
+					}
+					workload_identity_enabled = var.workload_identity_enabled
 				}
-				workload_identity_enabled = var.workload_identity_enabled
-			}
-		`,
+			`,
 		},
 		{
 			name: "single_yor_toggle",
 			code: `
-			resource "azurerm_kubernetes_cluster" "main" {
-				tags = {
-				  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+				resource "azurerm_kubernetes_cluster" "main" {
+					tags = {
+					  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+					}
+					workload_identity_enabled = var.workload_identity_enabled
 				}
-				workload_identity_enabled = var.workload_identity_enabled
-			}
-		`,
+			`,
 			want: `
-			resource "azurerm_kubernetes_cluster" "main" {
-				tags = (var.yor_toggle ? {
-				  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
-				} : {})
-				workload_identity_enabled = var.workload_identity_enabled
-			}
-		`,
+				resource "azurerm_kubernetes_cluster" "main" {
+					tags = (var.yor_toggle ? {
+					  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+					} : {})
+					workload_identity_enabled = var.workload_identity_enabled
+				}
+			`,
 		},
 		{
 			name: "single_yor_toggle_with_merge",
 			code: `
-			resource "azurerm_kubernetes_cluster" "main" {
-				tags = merge({
-		         env = "app"
-				},{
-				  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
-				})
-				workload_identity_enabled = var.workload_identity_enabled
-			}
-		`,
+				resource "azurerm_kubernetes_cluster" "main" {
+					tags = merge({
+			         env = "app"
+					},{
+					  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+					})
+					workload_identity_enabled = var.workload_identity_enabled
+				}
+			`,
 			want: `
-			resource "azurerm_kubernetes_cluster" "main" {
-				tags = merge({
-		         env = "app"
-				}, (var.yor_toggle ? {
-				  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
-				} : {}))
-				workload_identity_enabled = var.workload_identity_enabled
-			}
-		`,
+				resource "azurerm_kubernetes_cluster" "main" {
+					tags = merge({
+			         env = "app"
+					}, (var.yor_toggle ? {
+					  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+					} : {}))
+					workload_identity_enabled = var.workload_identity_enabled
+				}
+			`,
 		},
 		{
 			name: "single_yor_toggle_json_style",
 			code: `
+				resource "azurerm_kubernetes_cluster" "main" {
+					tags = {
+					  git_commit: "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+					}
+					workload_identity_enabled = var.workload_identity_enabled
+				}
+			`,
+			want: `
+				resource "azurerm_kubernetes_cluster" "main" {
+					tags = (var.yor_toggle ? {
+					  git_commit: "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+					} : {})
+					workload_identity_enabled = var.workload_identity_enabled
+				}
+			`,
+		},
+		{
+			name: "multiple_yor_toggle",
+			code: `
+				resource "azurerm_kubernetes_cluster" "main" {
+					tags = merge({
+					  git_commit= "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+					}, {
+					  env = "app"
+					}, {
+			         yor_trace = "12345"
+					})
+					workload_identity_enabled = var.workload_identity_enabled
+				}
+			`,
+			want: `
+				resource "azurerm_kubernetes_cluster" "main" {
+					tags = merge((var.yor_toggle ? {
+					  git_commit= "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+					} : {}), {
+					  env = "app"
+					}, (var.yor_toggle ? {
+			         yor_trace = "12345"
+					} : {}))
+					workload_identity_enabled = var.workload_identity_enabled
+				}
+			`,
+		},
+		{
+			name: "yor_toggle_with_customized_box_template",
+			code: `
 			resource "azurerm_kubernetes_cluster" "main" {
 				tags = {
-				  git_commit: "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+				  my_tags_git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
 				}
 				workload_identity_enabled = var.workload_identity_enabled
 			}
 		`,
 			want: `
 			resource "azurerm_kubernetes_cluster" "main" {
-				tags = (var.yor_toggle ? {
-				  git_commit: "bb858b143c94abf2d08c88de77a0054ff5f85db5"
-				} : {})
+				tags = (var.my_toggle ? { for k, v in {
+				  my_tags_git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
+				} : replace(k, "my_tags_", var.yor_toggle_prefix) => v } : {})
 				workload_identity_enabled = var.workload_identity_enabled
 			}
 		`,
-		},
-		{
-			name: "multiple_yor_toggle",
-			code: `
-			resource "azurerm_kubernetes_cluster" "main" {
-				tags = merge({
-				  git_commit= "bb858b143c94abf2d08c88de77a0054ff5f85db5"
-				}, {
-				  env = "app"
-				}, {
-		         yor_trace = "12345"
-				})
-				workload_identity_enabled = var.workload_identity_enabled
-			}
-		`,
-			want: `
-			resource "azurerm_kubernetes_cluster" "main" {
-				tags = merge((var.yor_toggle ? {
-				  git_commit= "bb858b143c94abf2d08c88de77a0054ff5f85db5"
-				} : {}), {
-				  env = "app"
-				}, (var.yor_toggle ? {
-		         yor_trace = "12345"
-				} : {}))
-				workload_identity_enabled = var.workload_identity_enabled
-			}
-		`,
-		},
-		{
-			name: "yor_toggle_with_customized_box_template",
-			code: `  
-		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = {  
-			  my_tags_git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
-			}
-			workload_identity_enabled = var.workload_identity_enabled  
-		}  
-	`,
-			want: `  
-		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = (var.my_toggle ? { for k, v in {  
-			  my_tags_git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
-			} : replace(k, "my_tags_", var.yor_toggle_prefix) => v } : {})
-			workload_identity_enabled = var.workload_identity_enabled  
-		}  
-	`,
 			boxTemplate: `(var.{{ .toggleName }} ? { for k, v in /*<box>*/ { yor_trace = 123 } /*</box>*/ : replace(k, "{{ .tagsPrefix }}", var.yor_toggle_prefix) => v } : {})`,
 			toggleName:  "my_toggle",
 			tagsPrefix:  "my_tags_",
+		},
+		{
+			name: "yor_toggle_with_customized_box_template2",
+			code: `  
+resource "azurerm_log_analytics_solution" "main" {
+  count = local.create_analytics_solution ? 1 : 0
+
+  location              = coalesce(var.location, data.azurerm_resource_group.main.location)
+  resource_group_name   = coalesce(var.log_analytics_workspace_resource_group_name, var.resource_group_name)
+  solution_name         = "ContainerInsights"
+  workspace_name        = local.log_analytics_workspace.name
+  workspace_resource_id = local.log_analytics_workspace.id
+  tags = merge(var.tags, (var.yor_toggle ? { for k, v in {
+    git_commit           = "e3016f23f676fcd2c1b07dd49a22f975d1616ab6"
+    git_file             = "main.tf"
+    git_last_modified_at = "2022-09-30 12:36:26"
+    git_last_modified_by = "gissur@skyvafnir.is"
+    git_modifiers        = "56525716+yupwei68/amit.gera/gissur/hezijie/lukasz.r.szczesniak"
+    git_org              = "Azure"
+    git_repo             = "terraform-azurerm-aks"
+    yor_trace            = "a33efee5-b36e-4574-97b8-02fd9b7f2f6b"
+  }  : "my_prefix_${k}" => v } : {}))
+
+  plan {
+    product   = "OMSGallery/ContainerInsights"
+    publisher = "Microsoft"
+  }
+}
+	`,
+			want: `  
+resource "azurerm_log_analytics_solution" "main" {
+  count = local.create_analytics_solution ? 1 : 0
+
+  location              = coalesce(var.location, data.azurerm_resource_group.main.location)
+  resource_group_name   = coalesce(var.log_analytics_workspace_resource_group_name, var.resource_group_name)
+  solution_name         = "ContainerInsights"
+  workspace_name        = local.log_analytics_workspace.name
+  workspace_resource_id = local.log_analytics_workspace.id
+  tags = merge(var.tags, (var.yor_toggle ? { for k, v in {
+    git_commit           = "e3016f23f676fcd2c1b07dd49a22f975d1616ab6"
+    git_file             = "main.tf"
+    git_last_modified_at = "2022-09-30 12:36:26"
+    git_last_modified_by = "gissur@skyvafnir.is"
+    git_modifiers        = "56525716+yupwei68/amit.gera/gissur/hezijie/lukasz.r.szczesniak"
+    git_org              = "Azure"
+    git_repo             = "terraform-azurerm-aks"
+    yor_trace            = "a33efee5-b36e-4574-97b8-02fd9b7f2f6b"
+  }  : "my_prefix_${k}" => v } : {}))
+
+  plan {
+    product   = "OMSGallery/ContainerInsights"
+    publisher = "Microsoft"
+  }
+}
+	`,
+			boxTemplate: `(var.{{ .toggleName }} ? { for k, v in /*<box>*/ { yor_trace = 123 } /*</box>*/ : "my_prefix_${k}" => v} : {})`,
+			toggleName:  "yor_toggle",
 		},
 	}
 

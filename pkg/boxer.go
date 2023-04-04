@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"text/template"
 
 	"github.com/Masterminds/sprig/v3"
@@ -126,7 +127,7 @@ func boxTagsTokensForBlock(block *hclwrite.Block, option Options) error {
 	for _, token := range tokens {
 		output.Add(token)
 	}
-	toggleRanges := scanYorToggleRanges(tokens, option.ToggleName)
+	toggleRanges := scanYorToggleRanges(tokens, tplt)
 	toggleTails := hashset.New()
 	for _, r := range toggleRanges {
 		toggleTails.Add(r.End + 1)
@@ -186,20 +187,16 @@ func scanYorTagsRanges(tokens hclwrite.Tokens, option Options) []tokensRange {
 	return ranges
 }
 
-func scanYorToggleRanges(tokens hclwrite.Tokens, toggleName string) []tokensRange {
+func scanYorToggleRanges(tokens hclwrite.Tokens, boxTemplate string) []tokensRange {
+	box, _ := buildBoxFromTemplate(boxTemplate)
 	ranges := make([]tokensRange, 0)
-	for i, token := range tokens {
-		if token.Type != hclsyntax.TokenIdent || string(token.Bytes) != "var" {
+	for i, _ := range tokens {
+		if i+len(box.Left) >= len(tokens) {
 			continue
 		}
-		if i+3 >= len(tokens) {
-			continue
-		}
-		if tokens[i+1].Type != hclsyntax.TokenDot {
-			continue
-		}
-		if tokens[i+2].Type == hclsyntax.TokenIdent && string(tokens[i+2].Bytes) == toggleName {
-			ranges = append(ranges, tokensRange{Start: i, End: i + 3})
+
+		if reflect.DeepEqual(tokens[i:i+len(box.Left)], box.Left) {
+			ranges = append(ranges, tokensRange{Start: i, End: i + len(box.Left) - 1})
 		}
 	}
 	return ranges
