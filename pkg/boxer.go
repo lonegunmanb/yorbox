@@ -120,38 +120,37 @@ func BoxFile(file *hclwrite.File, option Options) {
 }
 
 func boxTagsTokensForBlock(block *hclwrite.Block, option Options) error {
-	tplt, _ := option.RenderBoxTemplate()
-	boxTemplate, _ := BuildBoxFromTemplate(tplt)
-	oldTpl, _ := option.RenderOldBoxTemplate()
-
 	tags := block.Body().GetAttribute("tags")
 	if tags == nil {
 		return nil
 	}
 
+	oldTpl, _ := option.RenderOldBoxTemplate()
+
 	tokens := tags.Expr().BuildTokens(hclwrite.Tokens{})
-	output := al.New()
-	for _, token := range tokens {
-		output.Add(token)
-	}
 	toggleRanges := scanYorToggleRanges(tokens, oldTpl)
 	linq.From(toggleRanges).OrderByDescending(func(i interface{}) interface{} {
 		return i.(tokensRange).End
 	}).ToSlice(&toggleRanges)
+	output := al.New()
+	for _, token := range tokens {
+		output.Add(token)
+	}
 	for _, r := range toggleRanges {
 		removeRange(output, r.Start, r.End+1)
 	}
-	tokens = toTokens(output)
-	yorTagsRanges := scanYorTagsRanges(tokens, option)
+	tokensWithOutToggle := toTokens(output)
+	yorTagsRanges := scanYorTagsRanges(tokensWithOutToggle, option)
 	linq.From(yorTagsRanges).OrderByDescending(func(i interface{}) interface{} {
 		return i.(tokensRange).End
 	}).ToSlice(&yorTagsRanges)
+	tplt, _ := option.RenderBoxTemplate()
+	boxTemplate, _ := BuildBoxFromTemplate(tplt)
 	for _, r := range yorTagsRanges {
 		output.Insert(r.End+1, interfaces(boxTemplate.Right)...)
 		output.Insert(r.Start, interfaces(boxTemplate.Left)...)
 	}
-	tokens = toTokens(output)
-	block.Body().SetAttributeRaw("tags", tokens)
+	block.Body().SetAttributeRaw("tags", toTokens(output))
 	return nil
 }
 
@@ -196,9 +195,11 @@ func scanYorToggleRanges(tokens hclwrite.Tokens, boxTemplate string) []tokensRan
 	for i, _ := range tokens {
 		if i+len(box.Left) < len(tokens) && tokensEqual(tokens[i:i+len(box.Left)], box.Left) {
 			ranges = append(ranges, tokensRange{Start: i, End: i + len(box.Left) - 1})
+			i += len(box.Left)
 		}
 		if i+len(box.Right) <= len(tokens) && tokensEqual(tokens[i:i+len(box.Right)], box.Right) {
 			ranges = append(ranges, tokensRange{Start: i, End: i + len(box.Right) - 1})
+			i += len(box.Right)
 		}
 	}
 	return ranges
