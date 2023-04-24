@@ -21,20 +21,20 @@ func TestBoxFile(t *testing.T) {
 			name: "box resource",
 			input: `
 					resource "example_resource" "example_instance" {
-		           name = "example"
-		           tags = {
-		               yor_trace = "example_trace"
-		               environment = "dev"
-		           }
+		          name = "example"
+		          tags = {
+		              yor_trace = "example_trace"
+		              environment = "dev"
+		          }
 			}
 		`,
 			expected: `
 			resource "example_resource" "example_instance" {
-		           name = "example"
-		           tags = (var.yor_toggle ? {
-		               yor_trace = "example_trace"
-		               environment = "dev"
-		           } : {})
+		          name = "example"
+		          tags = (var.yor_toggle ? {
+		              yor_trace = "example_trace"
+		              environment = "dev"
+		          } : {})
 			}
 		`,
 		},
@@ -123,7 +123,7 @@ func TestBoxFile(t *testing.T) {
 		t.Run(input.name, func(t *testing.T) {
 			file, diag := hclwrite.ParseConfig([]byte(input.input), "test.tf", hcl.InitialPos)
 			require.False(t, diag.HasErrors())
-			BoxFile(file, NewOptions("", "yor_toggle", "", ""))
+			BoxFile(file, NewOptions("", "yor_toggle", "", "", ""))
 			actual := string(file.Bytes())
 			assertHclCodeEqual(t, input.expected, actual)
 			file, diag = hclwrite.ParseConfig([]byte(actual), "test.tf", hcl.InitialPos)
@@ -248,7 +248,7 @@ func TestScanYorTagsRanges_ValidResourceBlock(t *testing.T) {
 			require.NotNil(t, tagsToken)
 
 			// Call the scanYorTagsRanges function with the resource tokens
-			yorTagsRanges := scanYorTagsRanges(tagsToken, NewOptions("", "", "", ""))
+			yorTagsRanges := scanYorTagsRanges(tagsToken, NewOptions("", "", "", "", ""))
 
 			assert.Equal(t, input.want, yorTagsRanges)
 		})
@@ -273,6 +273,7 @@ func TestScanForYorToggleRanges(t *testing.T) {
 		`,
 			want: []tokensRange{
 				{Start: 8, End: 12},
+				{Start: 22, End: 25},
 			},
 		},
 		{
@@ -289,7 +290,9 @@ func TestScanForYorToggleRanges(t *testing.T) {
 	`,
 			want: []tokensRange{
 				{Start: 8, End: 12},
+				{Start: 22, End: 25},
 				{Start: 27, End: 31},
+				{Start: 41, End: 44},
 			},
 		},
 		{
@@ -320,7 +323,7 @@ func TestScanForYorToggleRanges(t *testing.T) {
 			require.NotNil(t, tokens)
 
 			// Call the scanYorTagsRanges function with the resource tokens
-			options := NewOptions("", "yor_toggle", "", "")
+			options := NewOptions("", "yor_toggle", "", "", "")
 			tplt, err := options.RenderBoxTemplate()
 			require.NoError(t, err)
 			options.BoxTemplate = tplt
@@ -523,7 +526,7 @@ resource "azurerm_log_analytics_solution" "main" {
   }
 }
 	`,
-			boxTemplate: `(var.{{ .toggleName }} ? { for k, v in /*<box>*/ { yor_trace = 123 } /*</box>*/ : "my_prefix_${k}" => v} : {})`,
+			boxTemplate: `(var.{{ .toggleName }} ? { for k, v in /*<box>*/ { yor_trace = 123 } /*</box>*/ : "my_prefix_${k}" => v } : {})`,
 			toggleName:  "yor_toggle",
 		},
 	}
@@ -539,7 +542,7 @@ resource "azurerm_log_analytics_solution" "main" {
 			if input.toggleName != "" {
 				toggleName = input.toggleName
 			}
-			options := NewOptions("", toggleName, input.boxTemplate, input.tagsPrefix)
+			options := NewOptions("", toggleName, input.boxTemplate, "", input.tagsPrefix)
 			boxTagsTokensForBlock(file.Body().Blocks()[0], options)
 			boxedCode := string(file.Bytes())
 			assertHclCodeEqual(t, input.want, boxedCode)
@@ -554,10 +557,47 @@ resource "azurerm_log_analytics_solution" "main" {
 
 func TestRenderBoxTemplateWithToggleName(t *testing.T) {
 	template := `(var.{{ .toggleName }} ? /*<box>*/ { yor_trace = 123 } /*</box>*/ : {})`
-	opt := NewOptions("", "my_toggle", template, "")
+	opt := NewOptions("", "my_toggle", template, "", "")
 	tplt, err := opt.RenderBoxTemplate()
 	require.NoError(t, err)
 	assert.Equal(t, `(var.my_toggle ? /*<box>*/ { yor_trace = 123 } /*</box>*/ : {})`, tplt)
+}
+
+func TestChangingBoxTemplate(t *testing.T) {
+	code := `resource "example_resource" "example_instance" {  
+            name = "example"  
+            tags = (var.yor_toggle ? {
+    			yor_trace = "0c9a0220-f447-473a-a142-0ed147c43691"
+    			} : {})
+	}  
+`
+	file, diags := hclwrite.ParseConfig([]byte(code), "", hcl.InitialPos)
+	require.False(t, diags.HasErrors())
+
+	toggleName := "yor_toggle"
+	oldTemplate := `(var.{{ .toggleName }} ? /*<box>*/ { yor_trace = 123 } /*</box>*/ : {})`
+	newTemplate := `(var.{{ .toggleName }} ? { for k, v in /*<box>*/ { yor_trace = 123 } /*</box>*/ : "my_prefix_${k}" => v } : {})`
+	options := NewOptions("", toggleName, newTemplate, oldTemplate, "")
+	boxTagsTokensForBlock(file.Body().Blocks()[0], options)
+	boxedCode := string(file.Bytes())
+	expected := `resource "example_resource" "example_instance" {  
+            name = "example"  
+            tags = (var.yor_toggle ? { for k, v in {
+    			yor_trace = "0c9a0220-f447-473a-a142-0ed147c43691"
+    			} : "my_prefix_${k}" => v } : {})
+	}  
+`
+	assert.Equal(t, formatHcl(expected), formatHcl(boxedCode))
+}
+
+func formatHcl(input string) string {
+	// Create a new HCL file from the input string
+	f, _ := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+
+	// Format the HCL file
+	formatted := f.Bytes()
+
+	return string(formatted)
 }
 
 func assertHclCodeEqual(t *testing.T, code1, code2 string) {

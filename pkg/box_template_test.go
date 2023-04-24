@@ -10,7 +10,7 @@ import (
 
 func TestParseBoxTemplate(t *testing.T) {
 	template := `(var.yor_toggle ? /*<box>*/ { yor_trace = 123 } /*</box>*/ : {})`
-	tokenTemplate, diagnostics := buildBoxFromTemplate(template)
+	tokenTemplate, diagnostics := BuildBoxFromTemplate(template)
 	require.False(t, diagnostics.HasErrors())
 	newFile := hclwrite.NewEmptyFile()
 	newFile.Body().AppendUnstructuredTokens(tokenTemplate.Left)

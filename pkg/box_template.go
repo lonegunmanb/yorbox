@@ -20,7 +20,7 @@ func interfaces(tokens hclwrite.Tokens) []any {
 	return result
 }
 
-func buildBoxFromTemplate(template string) (box, hcl.Diagnostics) {
+func BuildBoxFromTemplate(template string) (box, hcl.Diagnostics) {
 	template = fmt.Sprintf("tags = %s", template)
 	f, diagnostics := hclwrite.ParseConfig([]byte(template), "", hcl.InitialPos)
 	if diagnostics.HasErrors() {
