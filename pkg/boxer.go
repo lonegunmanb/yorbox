@@ -22,29 +22,24 @@ type tokensRange struct {
 }
 
 type Options struct {
-	Path           string
-	ToggleName     string
-	BoxTemplate    string
-	OldBoxTemplate string
-	TagsPrefix     string
+	Path        string
+	ToggleName  string
+	BoxTemplate string
+	TagsPrefix  string
 }
 
-func NewOptions(path string, toggleName string, boxTemplate, oldTemplate string, tagsPrefix string) Options {
+func NewOptions(path, toggleName, boxTemplate, tagsPrefix string) Options {
 	if toggleName == "" {
 		toggleName = "yor_toggle"
 	}
 	if boxTemplate == "" {
-		boxTemplate = `(var.{{ .toggleName }} ? /*<box>*/ { yor_trace = 123 } /*</box>*/ : {})`
-	}
-	if oldTemplate == "" {
-		oldTemplate = boxTemplate
+		boxTemplate = `/*<box>*/ (var.{{ .toggleName }} ? /*</box>*/ { yor_trace = 123 } /*<box>*/ : {}) /*</box>*/`
 	}
 	return Options{
-		Path:           path,
-		ToggleName:     toggleName,
-		BoxTemplate:    boxTemplate,
-		OldBoxTemplate: oldTemplate,
-		TagsPrefix:     tagsPrefix,
+		Path:        path,
+		ToggleName:  toggleName,
+		BoxTemplate: boxTemplate,
+		TagsPrefix:  tagsPrefix,
 	}
 }
 
@@ -52,12 +47,8 @@ func (o Options) RenderBoxTemplate() (string, error) {
 	return o.renderBoxTemplate(o.BoxTemplate)
 }
 
-func (o Options) RenderOldBoxTemplate() (string, error) {
-	return o.renderBoxTemplate(o.OldBoxTemplate)
-}
-
 func (o Options) renderBoxTemplate(tpl string) (string, error) {
-	t := template.Must(template.New("box").Funcs(sprig.TxtFuncMap()).Parse(tpl))
+	t := template.Must(template.New("Box").Funcs(sprig.TxtFuncMap()).Parse(tpl))
 	vars := map[string]any{
 		"dirPath":    o.Path,
 		"toggleName": o.ToggleName,
@@ -119,27 +110,19 @@ func BoxFile(file *hclwrite.File, option Options) {
 	}
 }
 
-func boxTagsTokensForBlock(block *hclwrite.Block, option Options) error {
+func boxTagsTokensForBlock(block *hclwrite.Block, option Options) {
 	tags := block.Body().GetAttribute("tags")
 	if tags == nil {
-		return nil
+		return
 	}
 
-	oldTpl, _ := option.RenderOldBoxTemplate()
-
 	tokens := tags.Expr().BuildTokens(hclwrite.Tokens{})
-	toggleRanges := scanYorToggleRanges(tokens, oldTpl)
-	linq.From(toggleRanges).OrderByDescending(func(i interface{}) interface{} {
-		return i.(tokensRange).End
-	}).ToSlice(&toggleRanges)
+	tokens = removeYorToggles(tokens)
 	output := al.New()
 	for _, token := range tokens {
 		output.Add(token)
 	}
-	for _, r := range toggleRanges {
-		removeRange(output, r.Start, r.End+1)
-	}
-	tokensWithOutToggle := toTokens(output)
+	tokensWithOutToggle := tokens
 	yorTagsRanges := scanYorTagsRanges(tokensWithOutToggle, option)
 	linq.From(yorTagsRanges).OrderByDescending(func(i interface{}) interface{} {
 		return i.(tokensRange).End
@@ -150,8 +133,32 @@ func boxTagsTokensForBlock(block *hclwrite.Block, option Options) error {
 		output.Insert(r.End+1, interfaces(boxTemplate.Right)...)
 		output.Insert(r.Start, interfaces(boxTemplate.Left)...)
 	}
-	block.Body().SetAttributeRaw("tags", toTokens(output))
-	return nil
+	tokens = toTokens(output)
+	if tokens[0].Type != hclsyntax.TokenOParen || tokens[len(tokens)-1].Type != hclsyntax.TokenCParen {
+		tokens = append(hclwrite.Tokens{
+			&hclwrite.Token{
+				Type:  hclsyntax.TokenOParen,
+				Bytes: []byte("("),
+			},
+		}, tokens...)
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenCParen,
+			Bytes: []byte(")"),
+		})
+	}
+	block.Body().SetAttributeRaw("tags", tokens)
+}
+
+func exprWithLeadingComment(attr *hclwrite.Attribute) hclwrite.Tokens {
+	tokens := attr.BuildTokens(hclwrite.Tokens{})
+	equalIndex := -1
+	for i := 0; i < len(tokens); i++ {
+		if tokens[i].Type == hclsyntax.TokenEqual {
+			equalIndex = i
+			break
+		}
+	}
+	return tokens[equalIndex+1:]
 }
 
 func scanYorTagsRanges(tokens hclwrite.Tokens, option Options) []tokensRange {
@@ -189,32 +196,24 @@ func scanYorTagsRanges(tokens hclwrite.Tokens, option Options) []tokensRange {
 	return ranges
 }
 
-func scanYorToggleRanges(tokens hclwrite.Tokens, boxTemplate string) []tokensRange {
-	box, _ := BuildBoxFromTemplate(boxTemplate)
-	ranges := make([]tokensRange, 0)
+func removeYorToggles(tokens hclwrite.Tokens) hclwrite.Tokens {
+	result := hclwrite.Tokens{}
+	inBox := false
 	for i, _ := range tokens {
-		if i+len(box.Left) < len(tokens) && tokensEqual(tokens[i:i+len(box.Left)], box.Left) {
-			ranges = append(ranges, tokensRange{Start: i, End: i + len(box.Left) - 1})
-			i += len(box.Left)
+		if tokens[i].Type == hclsyntax.TokenComment {
+			if string(tokens[i].Bytes) == "/*<box>*/" {
+				inBox = true
+				continue
+			} else if string(tokens[i].Bytes) == "/*</box>*/" {
+				inBox = false
+				continue
+			}
 		}
-		if i+len(box.Right) <= len(tokens) && tokensEqual(tokens[i:i+len(box.Right)], box.Right) {
-			ranges = append(ranges, tokensRange{Start: i, End: i + len(box.Right) - 1})
-			i += len(box.Right)
-		}
-	}
-	return ranges
-}
-
-func tokensEqual(tokens1, tokens2 hclwrite.Tokens) bool {
-	if len(tokens1) != len(tokens2) {
-		return false
-	}
-	for i := 0; i < len(tokens1); i++ {
-		if tokens1[i].Type != tokens2[i].Type || string(tokens1[i].Bytes) != string(tokens2[i].Bytes) {
-			return false
+		if !inBox {
+			result = append(result, tokens[i])
 		}
 	}
-	return true
+	return result
 }
 
 func removeRange(output *al.List, start int, end int) {

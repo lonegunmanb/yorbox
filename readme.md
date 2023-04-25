@@ -71,7 +71,7 @@ resource azurerm_kubernetes_cluster "k8s_cluster" {
   role_based_access_control {
     enabled = false
   }
-  tags = (var.yor_toggle ? {
+tags = (/*<box>*/(var.yor_toggle ? /*</box>*/{
     git_commit           = "898d5beaec7ffdef6df0d7abecff407362e2a74e"
     git_file             = "terraform/azure/aks.tf"
     git_last_modified_at = "2020-06-17 12:59:55"
@@ -80,9 +80,135 @@ resource azurerm_kubernetes_cluster "k8s_cluster" {
     git_org              = "bridgecrewio"
     git_repo             = "terragoat"
     yor_trace            = "6103d111-864e-42e5-899c-1864de281fd1"
-  } : {})
+  }/*<box>*/ : {})/*</box>*/)
 }
 ```
+
+## Box Denotation and How it works
+
+Assume we've boxed the tags as follows:
+
+```hcl
+tags = (var.yor_toggle ? {
+  git_commit           = "898d5beaec7ffdef6df0d7abecff407362e2a74e"
+  git_file             = "terraform/azure/aks.tf"
+  git_last_modified_at = "2020-06-17 12:59:55"
+  git_last_modified_by = "nimrodkor@gmail.com"
+  git_modifiers        = "nimrodkor"
+  git_org              = "bridgecrewio"
+  git_repo             = "terragoat"
+  yor_trace            = "6103d111-864e-42e5-899c-1864de281fd1"
+} : {})
+```
+
+What if we'd like to use a different box template, e.g:
+
+```hcl
+tags = (var.yor_toggle ? { for k,v in {
+  git_commit           = "898d5beaec7ffdef6df0d7abecff407362e2a74e"
+  git_file             = "terraform/azure/aks.tf"
+  git_last_modified_at = "2020-06-17 12:59:55"
+  git_last_modified_by = "nimrodkor@gmail.com"
+  git_modifiers        = "nimrodkor"
+  git_org              = "bridgecrewio"
+  git_repo             = "terragoat"
+  yor_trace            = "6103d111-864e-42e5-899c-1864de281fd1"
+} : "my_prefix_${k}"=> v }: {})
+```
+
+How can we remove the previous box and add a new one? Here comes the box denotation. The box denotation is a special comment that tells YorBox where the box starts and ends. It's a special comment that starts with `/*<box>*/` and ends with `/*</box>*/`. YorBox will remove the box denotation and the box itself, and then add a new box with the new template:
+
+```hcl
+tags = (/*<box>*/(var.yor_toggle ? /*</box>*/{
+  git_commit           = "898d5beaec7ffdef6df0d7abecff407362e2a74e"
+  git_file             = "terraform/azure/aks.tf"
+  git_last_modified_at = "2020-06-17 12:59:55"
+  git_last_modified_by = "nimrodkor@gmail.com"
+  git_modifiers        = "nimrodkor"
+  git_org              = "bridgecrewio"
+  git_repo             = "terragoat"
+  yor_trace            = "6103d111-864e-42e5-899c-1864de281fd1"
+}/*<box>*/ : {})/*</box>*/)
+```
+
+The tokens between box denotation would be removed:
+
+```hcl
+tags = ({
+  git_commit           = "898d5beaec7ffdef6df0d7abecff407362e2a74e"
+  git_file             = "terraform/azure/aks.tf"
+  git_last_modified_at = "2020-06-17 12:59:55"
+  git_last_modified_by = "nimrodkor@gmail.com"
+  git_modifiers        = "nimrodkor"
+  git_org              = "bridgecrewio"
+  git_repo             = "terragoat"
+  yor_trace            = "6103d111-864e-42e5-899c-1864de281fd1"
+})
+```
+
+Then YorBox will add a new box with the new template:
+
+```hcl
+tags = (/*<box>*/(var.yor_toggle ? { for k,v in /*</box>*/{
+  git_commit           = "898d5beaec7ffdef6df0d7abecff407362e2a74e"
+  git_file             = "terraform/azure/aks.tf"
+  git_last_modified_at = "2020-06-17 12:59:55"
+  git_last_modified_by = "nimrodkor@gmail.com"
+  git_modifiers        = "nimrodkor"
+  git_org              = "bridgecrewio"
+  git_repo             = "terragoat"
+  yor_trace            = "6103d111-864e-42e5-899c-1864de281fd1"
+}/*<box>*/:"my_prefix_${k}"=>v } : {})/*</box>*/)
+```
+
+A pair of paren would be added to `tags` attribute if it doesn't have one:
+
+```hcl
+tags = {
+  git_commit           = "898d5beaec7ffdef6df0d7abecff407362e2a74e"
+  git_file             = "terraform/azure/aks.tf"
+  git_last_modified_at = "2020-06-17 12:59:55"
+  git_last_modified_by = "nimrodkor@gmail.com"
+  git_modifiers        = "nimrodkor"
+  git_org              = "bridgecrewio"
+  git_repo             = "terragoat"
+  yor_trace            = "6103d111-864e-42e5-899c-1864de281fd1"
+}
+```
+
+Would be boxed as:
+
+```hcl
+tags = (/*<box>*/(var.yor_toggle ? /*</box>*/{
+  git_commit           = "898d5beaec7ffdef6df0d7abecff407362e2a74e"
+  git_file             = "terraform/azure/aks.tf"
+  git_last_modified_at = "2020-06-17 12:59:55"
+  git_last_modified_by = "nimrodkor@gmail.com"
+  git_modifiers        = "nimrodkor"
+  git_org              = "bridgecrewio"
+  git_repo             = "terragoat"
+  yor_trace            = "6103d111-864e-42e5-899c-1864de281fd1"
+}/*<box>*/ : {})/*</box>*/)
+```
+
+That's because of `hclwrite`'s limitation. If we call the following go code:
+
+```go
+tags := block.Body().GetAttribute("tags")
+if tags == nil {
+return
+}
+
+tokens := tags.Expr().BuildTokens(hclwrite.Tokens{})
+```
+
+If `tags`'s expression is:
+
+```hcl
+tags = /*<box>*/ (var.yor_toggle ? /*</box>*/{ yor_trace = 123 } /*<box>*/ : {})</box>
+```
+
+Then `tokens` wouldn't contain the first `/*<box>*/` comment token as it would be interpreted as a lead comment token for the whole expression. To make YorBox work we have to ensure that the expression is wrapped with a pair of paren. That's why we add a pair of paren to the expression if it doesn't have one.
 
 ## Installation
 You can install Yor Box using go install command:
@@ -98,17 +224,104 @@ $ yor tag -d ./
 ...
 $ yorbox -dir <directory path> [-toggleName <toggle name>] [-help]
         Flags
-        -dir: Path to the directory containing .tf files (required)
-        -toggleName: Name of the toggle to add (default: "yor_toggle")
-        -help: Print help information
-        Examples
-        # Add "yor_toggle" block to all tags in the current directory
-        yorbox -dir .
+            -boxTemplate string
+            Box template to use when adding boxes (default "/*<box>*/(var.{{ .toggleName }} ? /*</box>*/ { yor_trace = 123 } /*<box>*/ : {})/*</box>*/")
+            -dir string
+            path to the directory containing .tf files
+            -help
+            Print help information
+            -tagsPrefix string
+            Prefix for tags applied to resources
+            -toggleName string
+            Name of the toggle to add (default "yor_toggle")
 
         # Add "my_toggle" block to all tags in the "terraform" directory
         yorbox -dir terraform -toggleName my_toggle
 ```
 
+
+## BoxTemplate
+
+The box template is a go template that is used to generate the box. e.g.:
+
+```bash
+$ yorbox -dir <directory path> -boxTemplate '/*<box>*/(var.{{ .toggleName }} ? { for k,v in /*</box>*/ { yor_trace = 123 } /*<box>*/ : "my_prefix_${k}"=> v} : {})/*</box>*/'
+```
+
+The left side of the box would be `/*<box>*/(var.{{ .toggleName }} ? { for k,v in /*</box>*/`, the right side of the box would be `/*<box>*/ : "my_prefix_${k}"=> v} : {})/*</box>*/`, so the boxed tags could be:
+
+```hcl
+tags = (/*<box>*/(var.yor_toggle ? { for k,v in /*</box>*/{
+  git_commit           = "898d5beaec7ffdef6df0d7abecff407362e2a74e"
+  git_file             = "terraform/azure/aks.tf"
+  git_last_modified_at = "2020-06-17 12:59:55"
+  git_last_modified_by = "nimrodkor@gmail.com"
+  git_modifiers        = "nimrodkor"
+  git_org              = "bridgecrewio"
+  git_repo             = "terragoat"
+  yor_trace            = "6103d111-864e-42e5-899c-1864de281fd1"
+}/*<box>*/:"my_prefix_${k}"=>v } : {})/*</box>*/)
+```
+
+## Variable in BoxTemplate
+
+The BoxTemplate would be rendered with user-provided variables. e.g., the default box template `/*<box>*/(var.{{ .toggleName }} ? /*</box>*/ { yor_trace = 123 } /*<box>*/ : {})/*</box>*/` with the following command:
+
+```bash
+$ yorbox -dir <directory> -toggleName "my_toggle"
+```
+
+The generated code could be:
+
+```hcl
+tags = (/*<box>*/(var.my_toggle ? /*</box>*/{
+  git_commit           = "898d5beaec7ffdef6df0d7abecff407362e2a74e"
+  git_file             = "terraform/azure/aks.tf"
+  git_last_modified_at = "2020-06-17 12:59:55"
+  git_last_modified_by = "nimrodkor@gmail.com"
+  git_modifiers        = "nimrodkor"
+  git_org              = "bridgecrewio"
+  git_repo             = "terragoat"
+  yor_trace            = "6103d111-864e-42e5-899c-1864de281fd1"
+}/*<box>*/ : {})/*</box>*/)
+```
+
+The available variables are:
+
+* `dirPath`:    `-dir`,
+* `toggleName`: `-toggleName`,
+* `tagsPrefix`: `-tagsPrefix`,
+
+## TagsPrefix
+
+In case you're using yor with specifix prefix:
+
+```bash
+# Apply tags with a specifix prefix
+$ yor tag -d . --tag-prefix "my_prefix_"
+```
+
+The generated tags could be:
+
+```hcl
+tags = {
+  my_prefix_git_commit           = "898d5beaec7ffdef6df0d7abecff407362e2a74e"
+  my_prefix_git_file             = "terraform/azure/aks.tf"
+  my_prefix_git_last_modified_at = "2020-06-17 12:59:55"
+  my_prefix_git_last_modified_by = "nimrodkor@gmail.com"
+  my_prefix_git_modifiers        = "nimrodkor"
+  my_prefix_git_org              = "bridgecrewio"
+  my_prefix_git_repo             = "terragoat"
+  my_prefix_yor_trace            = "6103d111-864e-42e5-899c-1864de281fd1"
+}
+```
+
+YorBox relies on the tag's key to locate the tags generated by `yor`(`git_commit` and `yor_trace`). So if you're using a prefix, you have to specify it using `-tagsPrefix` flag:
+
+```bash
+$ yorbox -dir <directory path> -tagsPrefix "my_prefix_"
+```
+            
 ## License
 
 Yor Boxer is licensed under the MIT License. See LICENSE for more information.

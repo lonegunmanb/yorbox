@@ -7,7 +7,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 )
 
-type box struct {
+type Box struct {
 	Left  hclwrite.Tokens
 	Right hclwrite.Tokens
 }
@@ -20,13 +20,13 @@ func interfaces(tokens hclwrite.Tokens) []any {
 	return result
 }
 
-func BuildBoxFromTemplate(template string) (box, hcl.Diagnostics) {
+func BuildBoxFromTemplate(template string) (Box, hcl.Diagnostics) {
 	template = fmt.Sprintf("tags = %s", template)
 	f, diagnostics := hclwrite.ParseConfig([]byte(template), "", hcl.InitialPos)
 	if diagnostics.HasErrors() {
-		return box{}, diagnostics
+		return Box{}, diagnostics
 	}
-	templateTokens := f.Body().GetAttribute("tags").Expr().BuildTokens(hclwrite.Tokens{})
+	templateTokens := f.Body().GetAttribute("tags").BuildTokens(hclwrite.Tokens{})
 	leftTokens := hclwrite.Tokens{}
 	rightTokens := hclwrite.Tokens{}
 	inBox := false
@@ -37,15 +37,13 @@ func BuildBoxFromTemplate(template string) (box, hcl.Diagnostics) {
 			commentText := string(token.Bytes)
 			if commentText == "/*<box>*/" {
 				inBox = true
-				left = false
-				continue
 			} else if commentText == "/*</box>*/" {
 				inBox = false
-				continue
+				left = false
 			}
 		}
 
-		if !inBox {
+		if inBox {
 			if left {
 				leftTokens = append(leftTokens, token)
 			} else {
@@ -53,6 +51,13 @@ func BuildBoxFromTemplate(template string) (box, hcl.Diagnostics) {
 			}
 		}
 	}
+	endToken := &hclwrite.Token{
+		Type:         hclsyntax.TokenComment,
+		Bytes:        []byte("/*</box>*/"),
+		SpacesBefore: 1,
+	}
+	leftTokens = append(leftTokens, endToken)
+	rightTokens = append(rightTokens, endToken)
 
-	return box{Left: leftTokens, Right: rightTokens}, hcl.Diagnostics{}
+	return Box{Left: leftTokens, Right: rightTokens}, hcl.Diagnostics{}
 }
