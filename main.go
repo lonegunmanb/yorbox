@@ -16,7 +16,7 @@ func main() {
 	flag.StringVar(&toggleName, "toggleName", "yor_toggle", "Name of the toggle to add")
 
 	var boxTemplate string
-	flag.StringVar(&boxTemplate, "boxTemplate", "(var.{{ .toggleName }} ? /*<box>*/ { yor_trace = 123 } /*</box>*/ : {})",
+	flag.StringVar(&boxTemplate, "boxTemplate", "/*<box>*/ (var.{{ .toggleName }} ? /*</box>*/ { yor_trace = 123 } /*<box>*/ : {} ) /*</box>*/",
 		"Box template to use when adding boxes")
 
 	var tagsPrefix string
