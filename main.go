@@ -13,7 +13,7 @@ func main() {
 	flag.StringVar(&dirPath, "dir", "", "path to the directory containing .tf files")
 
 	var toggleName string
-	flag.StringVar(&toggleName, "toggleName", "yor_toggle", "Name of the toggle to add")
+	flag.StringVar(&toggleName, "toggleName", "tracing_tags_enabled", "Name of the toggle to add")
 
 	var boxTemplate string
 	flag.StringVar(&boxTemplate, "boxTemplate", "/*<box>*/ (var.{{ .toggleName }} ? /*</box>*/ { yor_trace = 123 } /*<box>*/ : {} ) /*</box>*/",
@@ -29,7 +29,7 @@ func main() {
 
 	if help {
 		// Print help information
-		fmt.Println("Usage: myprogram -dir <directory path> [-toggleName <toggle name>] [-boxTemplate <box template>] [-oldBoxTemplate <old box template>] [-tagsPrefix <tags prefix>]")
+		fmt.Println("Usage: myprogram -dir <directory path> [-toggleName <toggle name>] [-boxTemplate <box template>] [-tagsPrefix <tags prefix>]")
 		flag.PrintDefaults()
 		return
 	}
