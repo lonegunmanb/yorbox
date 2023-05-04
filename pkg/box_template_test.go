@@ -24,5 +24,5 @@ func TestParseBoxTemplate(t *testing.T) {
 	newFile.Body().AppendUnstructuredTokens(tokenTemplate.Right)
 
 	actual := fmt.Sprintf("tags = %s", string(newFile.Bytes()))
-	assert.Equal(t, formatHcl(`tags = /*<box>*/ (var.yor_toggle ? /*</box>*/ var.dummy/*<box>*/ : {})/*</box>*/`), formatHcl(actual))
+	assert.Equal(t, formatHcl(t, `tags = (/*<box>*/ (var.yor_toggle ? /*</box>*/ var.dummy/*<box>*/ : {})/*</box>*/)`), formatHcl(t, actual))
 }

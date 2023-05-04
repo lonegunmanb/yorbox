@@ -134,18 +134,18 @@ func boxTagsTokensForBlock(block *hclwrite.Block, option Options) {
 		output.Insert(r.Start, interfaces(boxTemplate.Left)...)
 	}
 	tokens = toTokens(output)
-	if tokens[0].Type != hclsyntax.TokenOParen || tokens[len(tokens)-1].Type != hclsyntax.TokenCParen {
-		tokens = append(hclwrite.Tokens{
-			&hclwrite.Token{
-				Type:  hclsyntax.TokenOParen,
-				Bytes: []byte("("),
-			},
-		}, tokens...)
-		tokens = append(tokens, &hclwrite.Token{
-			Type:  hclsyntax.TokenCParen,
-			Bytes: []byte(")"),
-		})
-	}
+	//if tokens[0].Type != hclsyntax.TokenOParen || tokens[len(tokens)-1].Type != hclsyntax.TokenCParen {
+	//	tokens = append(hclwrite.Tokens{
+	//		&hclwrite.Token{
+	//			Type:  hclsyntax.TokenOParen,
+	//			Bytes: []byte("("),
+	//		},
+	//	}, tokens...)
+	//	tokens = append(tokens, &hclwrite.Token{
+	//		Type:  hclsyntax.TokenCParen,
+	//		Bytes: []byte(")"),
+	//	})
+	//}
 	block.Body().SetAttributeRaw("tags", tokens)
 }
 
@@ -199,13 +199,22 @@ func scanYorTagsRanges(tokens hclwrite.Tokens, option Options) []tokensRange {
 func removeYorToggles(tokens hclwrite.Tokens) hclwrite.Tokens {
 	result := hclwrite.Tokens{}
 	inBox := false
-	for i, _ := range tokens {
+	for i := 0; i < len(tokens); i++ {
+		if tokens[i].Type == hclsyntax.TokenOParen && i < len(tokens)-1 && tokens[i+1].Type == hclsyntax.TokenComment {
+			if string(tokens[i+1].Bytes) == "/*<box>*/" {
+				inBox = true
+				continue
+			}
+		}
 		if tokens[i].Type == hclsyntax.TokenComment {
 			if string(tokens[i].Bytes) == "/*<box>*/" {
 				inBox = true
 				continue
 			} else if string(tokens[i].Bytes) == "/*</box>*/" {
 				inBox = false
+				if i < len(tokens)-1 && tokens[i+1].Type == hclsyntax.TokenCParen {
+					i++
+				}
 				continue
 			}
 		}
@@ -214,12 +223,6 @@ func removeYorToggles(tokens hclwrite.Tokens) hclwrite.Tokens {
 		}
 	}
 	return result
-}
-
-func removeRange(output *al.List, start int, end int) {
-	for i := 0; i < end-start; i++ {
-		output.Remove(start)
-	}
 }
 
 func toTokens(l *al.List) hclwrite.Tokens {

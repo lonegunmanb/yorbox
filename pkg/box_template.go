@@ -27,7 +27,12 @@ func BuildBoxFromTemplate(template string) (Box, hcl.Diagnostics) {
 		return Box{}, diagnostics
 	}
 	templateTokens := f.Body().GetAttribute("tags").BuildTokens(hclwrite.Tokens{})
-	leftTokens := hclwrite.Tokens{}
+	leftTokens := hclwrite.Tokens{
+		&hclwrite.Token{
+			Type:  hclsyntax.TokenOParen,
+			Bytes: []byte("("),
+		},
+	}
 	rightTokens := hclwrite.Tokens{}
 	inBox := false
 	left := true
@@ -58,6 +63,10 @@ func BuildBoxFromTemplate(template string) (Box, hcl.Diagnostics) {
 	}
 	leftTokens = append(leftTokens, endToken)
 	rightTokens = append(rightTokens, endToken)
+	rightTokens = append(rightTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenCParen,
+		Bytes: []byte(")"),
+	})
 
 	return Box{Left: leftTokens, Right: rightTokens}, hcl.Diagnostics{}
 }

@@ -19,20 +19,20 @@ func TestBoxFile(t *testing.T) {
 			name: "Box resource without paren",
 			input: `
 					resource "example_resource" "example_instance" {
-		          name = "example"
-		          tags = {
-		              yor_trace = "example_trace"
-		              environment = "dev"
-		          }
+		         name = "example"
+		         tags = {
+		             yor_trace = "example_trace"
+		             environment = "dev"
+		         }
 			}
 		`,
 			expected: `
 			resource "example_resource" "example_instance" {
-		          name = "example"
-		          tags = (/*<box>*/(var.yor_toggle ? /*</box>*/{
-		              yor_trace = "example_trace"
-		              environment = "dev"
-		          }/*<box>*/ : {})/*</box>*/)
+		         name = "example"
+		         tags = (/*<box>*/(var.yor_toggle ? /*</box>*/{
+		             yor_trace = "example_trace"
+		             environment = "dev"
+		         }/*<box>*/ : {})/*</box>*/)
 			}
 		`,
 		},
@@ -40,20 +40,20 @@ func TestBoxFile(t *testing.T) {
 			name: "Box resource with paren",
 			input: `
 					resource "example_resource" "example_instance" {
-		          name = "example"
-		          tags = ({
-		              yor_trace = "example_trace"
-		              environment = "dev"
-		          })
+		         name = "example"
+		         tags = {
+		             yor_trace = "example_trace"
+		             environment = "dev"
+		         }
 			}
 		`,
 			expected: `
 			resource "example_resource" "example_instance" {
-		          name = "example"
-		          tags = (/*<box>*/(var.yor_toggle ? /*</box>*/{
-		              yor_trace = "example_trace"
-		              environment = "dev"
-		          }/*<box>*/ : {})/*</box>*/)
+		         name = "example"
+		         tags = (/*<box>*/(var.yor_toggle ? /*</box>*/{
+		             yor_trace = "example_trace"
+		             environment = "dev"
+		         }/*<box>*/ : {})/*</box>*/)
 			}
 		`,
 		},
@@ -62,9 +62,9 @@ func TestBoxFile(t *testing.T) {
 			input: `
 					resource "example_resource" "example_instance" {
 		           name = "example"
-		           tags = (merge(each.value.tags, {}, /*<box>*/(var.yor_toggle ? /*</box>*/{
+		           tags = merge(each.value.tags, {}, (/*<box>*/(var.yor_toggle ? /*</box>*/{
 		   			yor_trace = "0c9a0220-f447-473a-a142-0ed147c43691"
-		   			}/*<box>*/ : {})/*</box>*/, {
+		   			}/*<box>*/ : {})/*</box>*/), {
 		  			 	git_commit           = "d101883be1a535645f359f1e1a047cf4b30bc2a2"
 		   			git_file             = "main.tf"
 		   			git_last_modified_at = "2023-03-23 11:09:02"
@@ -72,15 +72,15 @@ func TestBoxFile(t *testing.T) {
 		   			git_modifiers        = "hezijie/lonegunmanb"
 		   			git_org              = "Azure"
 		   			git_repo             = "terraform-azurerm-aks"
-		 			}))
+		 			})
 			}
 		`,
 			expected: `
 			resource "example_resource" "example_instance" {
 		           name = "example"
-		           tags = (merge(each.value.tags, {}, /*<box>*/(var.yor_toggle ? /*</box>*/{
+		           tags = merge(each.value.tags, {}, (/*<box>*/(var.yor_toggle ? /*</box>*/{
 		   			yor_trace = "0c9a0220-f447-473a-a142-0ed147c43691"
-		   			}/*<box>*/ : {})/*</box>*/, /*<box>*/(var.yor_toggle ? /*</box>*/{
+		   			}/*<box>*/ : {})/*</box>*/), (/*<box>*/(var.yor_toggle ? /*</box>*/{
 		  			 	git_commit           = "d101883be1a535645f359f1e1a047cf4b30bc2a2"
 		   			git_file             = "main.tf"
 		   			git_last_modified_at = "2023-03-23 11:09:02"
@@ -144,10 +144,10 @@ func TestBoxFile(t *testing.T) {
 			require.False(t, diag.HasErrors())
 			BoxFile(file, NewOptions("", "yor_toggle", "", ""))
 			actual := string(file.Bytes())
-			assert.Equal(t, formatHcl(input.expected), formatHcl(actual))
+			assert.Equal(t, formatHcl(t, input.expected), formatHcl(t, actual))
 			file, diag = hclwrite.ParseConfig([]byte(actual), "test.tf", hcl.InitialPos)
 			actual = string(file.Bytes())
-			assert.Equal(t, formatHcl(input.expected), formatHcl(actual))
+			assert.Equal(t, formatHcl(t, input.expected), formatHcl(t, actual))
 		})
 	}
 }
@@ -284,34 +284,34 @@ func TestRemoveYorToggles(t *testing.T) {
 			name: "single_yor_toggle",
 			code: `
 			resource "azurerm_kubernetes_cluster" "main" {
-				tags = (merge(var.tags, /*<box>*/(var.yor_toggle ? /*</box>*/{
+				tags = merge(var.tags, (/*<box>*/(var.yor_toggle ? /*</box>*/{
 				  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
-				}/*<box>*/ : {})/*</box>*/)) 
+				}/*<box>*/ : {})/*</box>*/))
 				workload_identity_enabled = var.workload_identity_enabled
 			}
 		`,
-			want: `tags = (merge(var.tags, {
+			want: `tags = merge(var.tags, {
 				  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
-				}))
+				})
 `,
 		},
 		{
 			name: "multiple_yor_toggle",
 			code: `  
 		resource "azurerm_kubernetes_cluster" "main" {  
-			tags = (merge(var.tags, /*<box>*/ (var.yor_toggle ? /*</box>*/{  
+			tags = merge(var.tags, (/*<box>*/ (var.yor_toggle ? /*</box>*/{  
 			  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
-			}/*<box>*/ : {}) /*</box>*/, /*<box>*/ (var.yor_toggle ? /*</box>*/{
+			}/*<box>*/ : {}) /*</box>*/), (/*<box>*/ (var.yor_toggle ? /*</box>*/{
 			  yor_trace			   = "12345"
-			}/*<box>*/ : {})/*</box>*/))  
+			}/*<box>*/ : {})/*</box>*/))
 			workload_identity_enabled = var.workload_identity_enabled  
 		}  
 	`,
-			want: `tags = (merge(var.tags, {  
+			want: `tags = merge(var.tags, {  
 			  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"  
 			}, {
 			  yor_trace			   = "12345"
-			}))
+			})
 `,
 		},
 		{
@@ -333,17 +333,17 @@ func TestRemoveYorToggles(t *testing.T) {
 			name: "yor_toggle_with_other_comments",
 			code: `
 			resource "azurerm_kubernetes_cluster" "main" {
-				tags = (merge(var.tags, /*<box>*/(var.yor_toggle ? /*</box>*/{
+				tags = merge(var.tags, (/*<box>*/(var.yor_toggle ? /*</box>*/{
                   # comment
 				  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
 				}/*<box>*/ : {})/*</box>*/)) 
 				workload_identity_enabled = var.workload_identity_enabled
 			}
 		`,
-			want: `tags = (merge(var.tags, {
+			want: `tags = merge(var.tags, {
                   # comment
 				  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
-				}))
+				})
 `,
 		},
 	}
@@ -363,7 +363,7 @@ func TestRemoveYorToggles(t *testing.T) {
 
 			tokensWithoutToggle := removeYorToggles(tokens)
 
-			assert.Equal(t, formatHcl(input.want), formatHcl(string(tokensWithoutToggle.Bytes())))
+			assert.Equal(t, formatHcl(t, input.want), formatHcl(t, string(tokensWithoutToggle.Bytes())))
 		})
 	}
 }
@@ -389,9 +389,9 @@ func TestBoxYorTags(t *testing.T) {
 			`,
 			want: `
 				resource "azurerm_kubernetes_cluster" "main" {
-					tags = ({
+					tags = {
 					  env           = "app"
-					})
+					}
 					workload_identity_enabled = var.workload_identity_enabled
 				}
 			`,
@@ -429,9 +429,9 @@ func TestBoxYorTags(t *testing.T) {
 					`,
 			want: `
 						resource "azurerm_kubernetes_cluster" "main" {
-							tags = (merge({
+							tags = merge({
 					         env = "app"
-							},/*<box>*/ (var.yor_toggle ? /*</box>*/{
+							},(/*<box>*/ (var.yor_toggle ? /*</box>*/{
 							  git_commit           = "bb858b143c94abf2d08c88de77a0054ff5f85db5"
 							}/*<box>*/ : {}) /*</box>*/))
 							workload_identity_enabled = var.workload_identity_enabled
@@ -473,11 +473,11 @@ func TestBoxYorTags(t *testing.T) {
 					`,
 			want: `
 						resource "azurerm_kubernetes_cluster" "main" {
-							tags = (merge(/*<box>*/(var.yor_toggle ? /*</box>*/{
+							tags = merge((/*<box>*/(var.yor_toggle ? /*</box>*/{
 							  git_commit= "bb858b143c94abf2d08c88de77a0054ff5f85db5"
-							}/*<box>*/ : {})/*</box>*/, {
+							}/*<box>*/ : {})/*</box>*/), {
 							  env = "app"
-							},/*<box>*/ (var.yor_toggle ? /*</box>*/{
+							},(/*<box>*/ (var.yor_toggle ? /*</box>*/{
 					         yor_trace = "12345"
 							}/*<box>*/ : {})/*</box>*/))
 							workload_identity_enabled = var.workload_identity_enabled
@@ -517,7 +517,7 @@ func TestBoxYorTags(t *testing.T) {
 		 solution_name         = "ContainerInsights"
 		 workspace_name        = local.log_analytics_workspace.name
 		 workspace_resource_id = local.log_analytics_workspace.id
-		 tags = (merge(var.tags, /*<box>*/(var.yor_toggle ? { for k, v in /*</box>*/{
+		 tags = merge(var.tags, (/*<box>*/(var.yor_toggle ? { for k, v in /*</box>*/{
 		   git_commit           = "e3016f23f676fcd2c1b07dd49a22f975d1616ab6"
 		   git_file             = "main.tf"
 		   git_last_modified_at = "2022-09-30 12:36:26"
@@ -543,7 +543,7 @@ func TestBoxYorTags(t *testing.T) {
 		 solution_name         = "ContainerInsights"
 		 workspace_name        = local.log_analytics_workspace.name
 		 workspace_resource_id = local.log_analytics_workspace.id
-		 tags = (merge(var.tags, /*<box>*/ (var.yor_toggle ? { for k, v in /*</box>*/{
+		 tags = merge(var.tags, (/*<box>*/ (var.yor_toggle ? { for k, v in /*</box>*/{
 		   git_commit           = "e3016f23f676fcd2c1b07dd49a22f975d1616ab6"
 		   git_file             = "main.tf"
 		   git_last_modified_at = "2022-09-30 12:36:26"
@@ -579,12 +579,12 @@ func TestBoxYorTags(t *testing.T) {
 			options := NewOptions("", toggleName, input.boxTemplate, input.tagsPrefix)
 			boxTagsTokensForBlock(file.Body().Blocks()[0], options)
 			boxedCode := string(file.Bytes())
-			assert.Equal(t, formatHcl(input.want), formatHcl(boxedCode))
+			assert.Equal(t, formatHcl(t, input.want), formatHcl(t, boxedCode))
 			boxedFile, diags := hclwrite.ParseConfig([]byte(boxedCode), "", hcl.InitialPos)
 			require.False(t, diags.HasErrors())
 			boxTagsTokensForBlock(boxedFile.Body().Blocks()[0], options)
 			boxedCode = string(file.Bytes())
-			assert.Equal(t, formatHcl(input.want), formatHcl(boxedCode))
+			assert.Equal(t, formatHcl(t, input.want), formatHcl(t, boxedCode))
 		})
 	}
 }
@@ -620,13 +620,13 @@ func TestChangingBoxTemplate(t *testing.T) {
             name = "example"  
 	}  
 `
-	assert.Equal(t, formatHcl(expected), formatHcl(boxedCode))
+	assert.Equal(t, formatHcl(t, expected), formatHcl(t, boxedCode))
 }
 
-func formatHcl(input string) string {
+func formatHcl(t *testing.T, input string) string {
 	// Create a new HCL file from the input string
-	f, _ := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
-
+	f, diag := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+	require.False(t, diag.HasErrors())
 	// Format the HCL file
 	formatted := f.Bytes()
 
