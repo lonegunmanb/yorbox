@@ -136,6 +136,25 @@ func TestBoxFile(t *testing.T) {
 						}
 				`,
 		},
+		{
+			name: "`yor_name` should be boxed",
+			input: `
+					resource "example_resource" "example_instance" {
+		         name = "example"
+		         tags = {
+		             yor_name = "example_instance"
+		         }
+			}
+		`,
+			expected: `
+			resource "example_resource" "example_instance" {
+		         name = "example"
+		         tags = (/*<box>*/(var.yor_toggle ? /*</box>*/{
+		             yor_name = "example_instance"
+		         }/*<box>*/ : {})/*</box>*/)
+			}
+		`,
+		},
 	}
 	for i := 0; i < len(inputs); i++ {
 		input := inputs[i]

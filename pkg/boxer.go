@@ -174,7 +174,9 @@ func scanYorTagsRanges(tokens hclwrite.Tokens, option Options) []tokensRange {
 			fallthrough
 		case hclsyntax.TokenIdent:
 			name := string(token.Bytes)
-			previousYorTraceKey = name == fmt.Sprintf("%syor_trace", option.TagsPrefix) || name == fmt.Sprintf("%sgit_commit", option.TagsPrefix)
+			previousYorTraceKey = name == fmt.Sprintf("%syor_name", option.TagsPrefix) ||
+				name == fmt.Sprintf("%syor_trace", option.TagsPrefix) ||
+				name == fmt.Sprintf("%sgit_commit", option.TagsPrefix)
 		case hclsyntax.TokenEqual:
 			fallthrough
 		case hclsyntax.TokenColon:
