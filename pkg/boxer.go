@@ -10,6 +10,8 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	"github.com/ahmetb/go-linq/v3"
 	al "github.com/emirpasic/gods/lists/arraylist"
+	"github.com/emirpasic/gods/sets"
+	"github.com/emirpasic/gods/sets/hashset"
 	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -22,25 +24,32 @@ type tokensRange struct {
 }
 
 type Options struct {
-	Path        string
-	ToggleName  string
-	BoxTemplate string
-	TagsPrefix  string
+	Path                string
+	ToggleName          string
+	BoxTemplate         string
+	TagsPrefix          string
+	IgnoreResourceTypes sets.Set
 }
 
-func NewOptions(path, toggleName, boxTemplate, tagsPrefix string) Options {
+func NewOptions(path, toggleName, boxTemplate, tagsPrefix string, ignoreResourceTypes []string) Options {
 	if toggleName == "" {
 		toggleName = "yor_toggle"
 	}
 	if boxTemplate == "" {
 		boxTemplate = `/*<box>*/ (var.{{ .toggleName }} ? /*</box>*/ { yor_trace = 123 } /*<box>*/ : {}) /*</box>*/`
 	}
-	return Options{
-		Path:        path,
-		ToggleName:  toggleName,
-		BoxTemplate: boxTemplate,
-		TagsPrefix:  tagsPrefix,
+
+	opts := Options{
+		Path:                path,
+		ToggleName:          toggleName,
+		BoxTemplate:         boxTemplate,
+		TagsPrefix:          tagsPrefix,
+		IgnoreResourceTypes: hashset.New(),
 	}
+	for _, t := range ignoreResourceTypes {
+		opts.IgnoreResourceTypes.Add(t)
+	}
+	return opts
 }
 
 func (o Options) RenderBoxTemplate() (string, error) {
@@ -111,6 +120,9 @@ func BoxFile(file *hclwrite.File, option Options) {
 }
 
 func boxTagsTokensForBlock(block *hclwrite.Block, option Options) {
+	if block.Type() == "resource" && option.IgnoreResourceTypes.Contains(block.Labels()[0]) {
+		return
+	}
 	tags := block.Body().GetAttribute("tags")
 	if tags == nil {
 		return
@@ -134,18 +146,6 @@ func boxTagsTokensForBlock(block *hclwrite.Block, option Options) {
 		output.Insert(r.Start, interfaces(boxTemplate.Left)...)
 	}
 	tokens = toTokens(output)
-	//if tokens[0].Type != hclsyntax.TokenOParen || tokens[len(tokens)-1].Type != hclsyntax.TokenCParen {
-	//	tokens = append(hclwrite.Tokens{
-	//		&hclwrite.Token{
-	//			Type:  hclsyntax.TokenOParen,
-	//			Bytes: []byte("("),
-	//		},
-	//	}, tokens...)
-	//	tokens = append(tokens, &hclwrite.Token{
-	//		Type:  hclsyntax.TokenCParen,
-	//		Bytes: []byte(")"),
-	//	})
-	//}
 	block.Body().SetAttributeRaw("tags", tokens)
 }
 

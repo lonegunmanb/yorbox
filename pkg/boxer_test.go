@@ -161,7 +161,7 @@ func TestBoxFile(t *testing.T) {
 		t.Run(input.name, func(t *testing.T) {
 			file, diag := hclwrite.ParseConfig([]byte(input.input), "test.tf", hcl.InitialPos)
 			require.False(t, diag.HasErrors())
-			BoxFile(file, NewOptions("", "yor_toggle", "", ""))
+			BoxFile(file, NewOptions("", "yor_toggle", "", "", nil))
 			actual := string(file.Bytes())
 			assert.Equal(t, formatHcl(t, input.expected), formatHcl(t, actual))
 			file, diag = hclwrite.ParseConfig([]byte(actual), "test.tf", hcl.InitialPos)
@@ -286,7 +286,7 @@ func TestScanYorTagsRanges_ValidResourceBlock(t *testing.T) {
 			require.NotNil(t, tagsToken)
 
 			// Call the scanYorTagsRanges function with the resource tokens
-			yorTagsRanges := scanYorTagsRanges(tagsToken, NewOptions("", "", "", ""))
+			yorTagsRanges := scanYorTagsRanges(tagsToken, NewOptions("", "", "", "", nil))
 
 			assert.Equal(t, input.want, yorTagsRanges)
 		})
@@ -595,7 +595,7 @@ func TestBoxYorTags(t *testing.T) {
 			if input.toggleName != "" {
 				toggleName = input.toggleName
 			}
-			options := NewOptions("", toggleName, input.boxTemplate, input.tagsPrefix)
+			options := NewOptions("", toggleName, input.boxTemplate, input.tagsPrefix, nil)
 			boxTagsTokensForBlock(file.Body().Blocks()[0], options)
 			boxedCode := string(file.Bytes())
 			assert.Equal(t, formatHcl(t, input.want), formatHcl(t, boxedCode))
@@ -610,7 +610,7 @@ func TestBoxYorTags(t *testing.T) {
 
 func TestRenderBoxTemplateWithToggleName(t *testing.T) {
 	template := `(var.{{ .toggleName }} ? /*<Box>*/ { yor_trace = 123 } /*</Box>*/ : {})`
-	opt := NewOptions("", "my_toggle", template, "")
+	opt := NewOptions("", "my_toggle", template, "", nil)
 	tplt, err := opt.RenderBoxTemplate()
 	require.NoError(t, err)
 	assert.Equal(t, `(var.my_toggle ? /*<Box>*/ { yor_trace = 123 } /*</Box>*/ : {})`, tplt)
@@ -629,7 +629,7 @@ func TestChangingBoxTemplate(t *testing.T) {
 
 	toggleName := "yor_toggle"
 	newTemplate := `/*<box>*/(var.{{ .toggleName }} ? { for k, v in /*</box>*/{ yor_trace = 123 }/*<box>*/ : "my_prefix_${k}" => v } : {})/*</box>*/`
-	options := NewOptions("", toggleName, newTemplate, "")
+	options := NewOptions("", toggleName, newTemplate, "", nil)
 	boxTagsTokensForBlock(file.Body().Blocks()[0], options)
 	boxedCode := string(file.Bytes())
 	expected := `resource "example_resource" "example_instance" {  
@@ -640,6 +640,25 @@ func TestChangingBoxTemplate(t *testing.T) {
 	}  
 `
 	assert.Equal(t, formatHcl(t, expected), formatHcl(t, boxedCode))
+}
+
+func TestIgnoreResourceType(t *testing.T) {
+	hclCode := `  
+	resource "modtm_telemetry" "telemetry" {  
+		tags = {  
+			yor_name = "yor"  
+			yor_trace = "123"  
+			git_commit = "abc"  
+		}  
+	}  
+	`
+
+	f, _ := hclwrite.ParseConfig([]byte(hclCode), "", hcl.InitialPos)
+
+	options := NewOptions("", "", "", "", []string{"modtm_telemetry"})
+	BoxFile(f, options)
+
+	assert.Equal(t, formatHcl(t, hclCode), formatHcl(t, string(f.Bytes())))
 }
 
 func formatHcl(t *testing.T, input string) string {

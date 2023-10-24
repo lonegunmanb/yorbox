@@ -3,9 +3,21 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/lonegunmanb/yorbox/pkg"
 	"os"
+
+	"github.com/lonegunmanb/yorbox/pkg"
 )
+
+type arrayFlags []string
+
+func (i *arrayFlags) String() string {
+	return fmt.Sprint(*i)
+}
+
+func (i *arrayFlags) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
 
 func main() {
 	// Define command line flags
@@ -22,6 +34,9 @@ func main() {
 	var tagsPrefix string
 	flag.StringVar(&tagsPrefix, "tagsPrefix", "", "Prefix for tags applied to resources")
 
+	var ignoreResourceTypes arrayFlags
+	flag.Var(&ignoreResourceTypes, "ignoreResourceType", "Resource types to ignore")
+
 	var help bool
 	flag.BoolVar(&help, "help", false, "Print help information")
 
@@ -29,7 +44,7 @@ func main() {
 
 	if help {
 		// Print help information
-		fmt.Println("Usage: myprogram -dir <directory path> [-toggleName <toggle name>] [-boxTemplate <box template>] [-tagsPrefix <tags prefix>]")
+		fmt.Println("Usage: yorbox -dir <directory path> [-toggleName <toggle name>] [-boxTemplate <box template>] [-tagsPrefix <tags prefix>] [-ignoreResourceType <ignore resource type> ...]")
 		flag.PrintDefaults()
 		return
 	}
@@ -39,12 +54,8 @@ func main() {
 		return
 	}
 
-	options := pkg.Options{
-		Path:        dirPath,
-		ToggleName:  toggleName,
-		BoxTemplate: boxTemplate,
-		TagsPrefix:  tagsPrefix,
-	}
+	options := pkg.NewOptions(dirPath, toggleName, boxTemplate, tagsPrefix, ignoreResourceTypes)
+
 	valid := optionValid(options)
 	if !valid {
 		os.Exit(1)
