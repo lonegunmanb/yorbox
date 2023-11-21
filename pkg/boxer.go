@@ -149,18 +149,6 @@ func boxTagsTokensForBlock(block *hclwrite.Block, option Options) {
 	block.Body().SetAttributeRaw("tags", tokens)
 }
 
-func exprWithLeadingComment(attr *hclwrite.Attribute) hclwrite.Tokens {
-	tokens := attr.BuildTokens(hclwrite.Tokens{})
-	equalIndex := -1
-	for i := 0; i < len(tokens); i++ {
-		if tokens[i].Type == hclsyntax.TokenEqual {
-			equalIndex = i
-			break
-		}
-	}
-	return tokens[equalIndex+1:]
-}
-
 func scanYorTagsRanges(tokens hclwrite.Tokens, option Options) []tokensRange {
 	ranges := make([]tokensRange, 0)
 	latestOBrace := lls.New()

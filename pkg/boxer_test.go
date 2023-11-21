@@ -164,7 +164,7 @@ func TestBoxFile(t *testing.T) {
 			BoxFile(file, NewOptions("", "yor_toggle", "", "", nil))
 			actual := string(file.Bytes())
 			assert.Equal(t, formatHcl(t, input.expected), formatHcl(t, actual))
-			file, diag = hclwrite.ParseConfig([]byte(actual), "test.tf", hcl.InitialPos)
+			file, _ = hclwrite.ParseConfig([]byte(actual), "test.tf", hcl.InitialPos)
 			actual = string(file.Bytes())
 			assert.Equal(t, formatHcl(t, input.expected), formatHcl(t, actual))
 		})
